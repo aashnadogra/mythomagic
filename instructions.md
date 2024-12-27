@@ -7,6 +7,7 @@
 1. **Deck Construction:**
    - Each player builds a **30-card deck**.
    - Decks must include a mix of **Rishis**, **Creatures**, and **Spells**.
+   - A deck can contain only **2** of each creature/ spell.
    - Cards generate or consume resources of four types: **Fire (F)**, **Blood (B)**, **Gold (G)**, and **Wood (W)**.
 
 2. **Starting Hand:**
@@ -38,6 +39,11 @@
       - **DT (Deathtouch)**: Any creature dealt damage by this creature immediately is destroyed, irrespective of the damage dealt.
       - **Vigilance**: Attacking does not cause the creature to tap.
       - **Trample**: Even if the creature is blocked, it deals any leftover damage (any portion of its strength it has remaining, after destroying its blocker(s)), to the opponent.
+      - **Hexproof(HEX)**: The creature cannot be targeted by any of the opponent's spell/ ability.
+      - **Flying**: The creature can only be blocked by another creature with flying or reach.
+      - **Reach**: The creature can block a creature with flying.
+      - **Menace**: The creature cann only be blocked by two or more blockers.
+
 
 
 3. **Spells:**
