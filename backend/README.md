@@ -81,23 +81,23 @@ You can now access the backend at http://localhost:5000.
 
 ## 1. Connect to database
 ```bash
---psql -U postgres
+psql -U postgres
 ```
 update the password
 
 ## 2. Create database called leaderboard
 ``` sql
---CREATE TABLE leaderboard
+CREATE TABLE leaderboard
 ```
 
 ## 3. Connect to the database
 ``` sql
--- \c leaderboard
+\c leaderboard
 ```
 
 ## 4. Create Users table
 ```sql
---CREATE TABLE users (
+CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE,
@@ -107,7 +107,7 @@ update the password
 
 ## 5. Create gamers table
 ```sql
---CREATE TABLE games (
+CREATE TABLE games (
     id SERIAL PRIMARY KEY,
     player1_id INT REFERENCES users(id) ON DELETE CASCADE,
     player2_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -118,7 +118,7 @@ update the password
 
 ## 6. Create leaderboard table
 ```sql
---CREATE TABLE leaderboard (
+CREATE TABLE leaderboard (
     user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     wins INT DEFAULT 0,
     losses INT DEFAULT 0,
@@ -128,13 +128,13 @@ update the password
 
 ## 7. Inserting records to test
 ```sql
---INSERT INTO users (username, email) VALUES
+INSERT INTO users (username, email) VALUES
 ('player1', 'player1@example.com'),
 ('player2', 'player2@example.com'),
 ('player3', 'player3@example.com');
 ```
 ```sql
---INSERT INTO games (player1_id, player2_id, winner_id) VALUES
+INSERT INTO games (player1_id, player2_id, winner_id) VALUES
 (1, 2, 1),
 (1, 3, 1),
 (2, 3, 3);
@@ -142,7 +142,7 @@ update the password
 
 ## 8. Update leaderboard
 ```sql
---INSERT INTO leaderboard (user_id, wins, losses)
+INSERT INTO leaderboard (user_id, wins, losses)
 SELECT
     id,
     COALESCE(wins.wins, 0) AS wins,
@@ -170,7 +170,7 @@ SET
 
 ## 9. Update ranks
 ```sql
---UPDATE leaderboard
+UPDATE leaderboard
 SET rank = subquery.rank
 FROM (
     SELECT user_id, RANK() OVER (ORDER BY wins DESC, losses ASC) AS rank
@@ -181,7 +181,7 @@ WHERE leaderboard.user_id = subquery.user_id;
 
 ## 10. Test the leaderboard
 ```sql
---SELECT u.username, l.wins, l.losses, l.rank
+SELECT u.username, l.wins, l.losses, l.rank
 FROM leaderboard l
 JOIN users u ON l.user_id = u.id
 ORDER BY l.rank;
