@@ -80,24 +80,33 @@ You can now access the backend at http://localhost:5000.
 # Backend setup for the leaderboard
 
 ## 1. Connect to database
+```bash
 --psql -U postgres
+```
 update the password
 
 ## 2. Create database called leaderboard
+``` sql
 --CREATE TABLE leaderboard
+```
 
 ## 3. Connect to the database
+``` sql
 -- \c leaderboard
+```
 
 ## 4. Create Users table
+```sql
 --CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+```
 
 ## 5. Create gamers table
+```sql
 --CREATE TABLE games (
     id SERIAL PRIMARY KEY,
     player1_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -105,27 +114,34 @@ update the password
     winner_id INT REFERENCES users(id) ON DELETE CASCADE,
     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+```
 
 ## 6. Create leaderboard table
+```sql
 --CREATE TABLE leaderboard (
     user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     wins INT DEFAULT 0,
     losses INT DEFAULT 0,
     rank INT DEFAULT NULL
 );
+```
 
 ## 7. Inserting records to test
+```sql
 --INSERT INTO users (username, email) VALUES
 ('player1', 'player1@example.com'),
 ('player2', 'player2@example.com'),
 ('player3', 'player3@example.com');
-
+```
+```sql
 --INSERT INTO games (player1_id, player2_id, winner_id) VALUES
 (1, 2, 1),
 (1, 3, 1),
 (2, 3, 3);
+```
 
 ## 8. Update leaderboard
+```sql
 --INSERT INTO leaderboard (user_id, wins, losses)
 SELECT
     id,
@@ -150,8 +166,10 @@ ON CONFLICT (user_id) DO UPDATE
 SET
     wins = EXCLUDED.wins,
     losses = EXCLUDED.losses;
+```
 
 ## 9. Update ranks
+```sql
 --UPDATE leaderboard
 SET rank = subquery.rank
 FROM (
@@ -159,12 +177,15 @@ FROM (
     FROM leaderboard
 ) subquery
 WHERE leaderboard.user_id = subquery.user_id;
+```
 
 ## 10. Test the leaderboard
+```sql
 --SELECT u.username, l.wins, l.losses, l.rank
 FROM leaderboard l
 JOIN users u ON l.user_id = u.id
 ORDER BY l.rank;
+```
 
 
 
