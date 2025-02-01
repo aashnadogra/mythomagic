@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import axios from "axios";
-import "./Login.css";  // Reuse the same CSS file for styling
+import { useNavigate } from "react-router-dom";  // Import useNavigate from react-router-dom
+import "./Login.css"; // Reuse the same CSS file for styling
 
 const SignUp = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState("");  // Display errors here
+  const navigate = useNavigate();  // Initialize useNavigate
 
   // Handle changes to username, password, and email fields
   const handleChange = (e) => {
@@ -32,11 +34,17 @@ const SignUp = () => {
       setErrorMessage("");  // Clear any previous error messages
       console.log("Account created successfully:", response.data.message); // Backend response message
 
-      // Optionally, you can redirect the user to the login page after successful signup
-      window.location.href = "/login"; // Redirect to login page
+      // Optionally, you can store the token for future use if backend returns one
+      if (response.data.token) {
+        localStorage.setItem("authToken", response.data.token); // Store token in localStorage
+      }
+
+      // Redirect to login page
+      navigate("/login");  // Use navigate() for redirection
+
     } catch (error) {
       console.error("Error during signup:", error);
-      
+
       // Handle error: either show a specific error message or a generic one
       setErrorMessage(error.response ? error.response.data.error : "Signup failed. Please try again.");
     }

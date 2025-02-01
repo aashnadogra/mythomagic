@@ -4,11 +4,11 @@ body {
 	background: linear-gradient(135deg, #1b1f47, #2a3465);
 	font: 600 16px/18px 'Open Sans', sans-serif;
   }
-  body {
-	background: #aaa url("D:\WE\webD\Game\Frontend\public\bg.png") center no-repeat;
+  /* body {
+	background: #aaa url("Game\Frontend\public\bg.png") center no-repeat;
 	background-size: cover;
 	
- }
+ } */
   
   .login-wrap {
 	width: 100%;

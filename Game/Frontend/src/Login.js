@@ -1,11 +1,14 @@
+// Login.js
 import React, { useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";  // Import useNavigate from react-router-dom
 import "./Login.css";
 
 const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");  // Display errors here
+  const navigate = useNavigate();  // Initialize useNavigate
 
   // Handle changes to username and password fields
   const handleChange = (e) => {
@@ -17,24 +20,32 @@ const Login = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
       // Sending username and password to backend
       const response = await axios.post("http://localhost:5000/login", {
         username,
-        password
+        password,
       });
 
-      // On success, log the message and token
-      setErrorMessage("");  // Clear any previous error messages
-      console.log("Token:", response.data.token);  // Token returned by backend
+      console.log("Login response:", response.data);  // Log the response to check the structure
 
-      // You can store the token for future use (like localStorage or sessionStorage)
-      localStorage.setItem("authToken", response.data.token);  // Store token in localStorage
-      window.location.href = "/dashboard"; // Redirect to the dashboard
+      // On success, log the message and token
+      setErrorMessage(""); // Clear any previous error messages
+      const token = response.data.token;
+      console.log("Token:", token); // Check if token is valid
+
+      if (token) {
+        // Store the token for future use (localStorage or sessionStorage)
+        localStorage.setItem("authToken", token);  // Store token in localStorage
+
+        // Redirect to dashboard
+        navigate("/dashboard");
+      } else {
+        setErrorMessage("Token not received.");
+      }
     } catch (error) {
       console.error("Error during login:", error);
-      
       // Handle error: either show a specific error message or a generic one
       setErrorMessage(error.response ? error.response.data.error : "Login failed. Please check your credentials.");
     }
