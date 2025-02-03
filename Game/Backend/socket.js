@@ -1,6 +1,20 @@
 const socketIo = require("socket.io");
 
-const rooms = {}; // Store game rooms
+const rooms = {}; // Store game rooms and player states
+
+const getRandomCards = () => {
+  const allCards = Array.from({ length: 28 }, (_, i) => `${i + 1}.jpg`);
+  return allCards.sort(() => Math.random() - 0.5).slice(0, 5);
+};
+
+const generateRoomCode = () => {
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return code;
+};
 
 const initSocket = (server) => {
   const io = socketIo(server, { cors: { origin: "*" } });
@@ -8,55 +22,81 @@ const initSocket = (server) => {
   io.on("connection", (socket) => {
     console.log(`New connection: ${socket.id}`);
 
-    // Handle joining a room
-    socket.on("join_room", (roomId, username) => {
-      if (!rooms[roomId]) {
-        rooms[roomId] = { players: [], selected: null, buttonClicks: {} };
+    socket.on("join_room", (roomId, username, isCreatingNewGame) => {
+      let finalRoomId = roomId;
+
+      if (isCreatingNewGame) {
+        // Generate a unique room code
+        do {
+          finalRoomId = generateRoomCode();
+        } while (rooms[finalRoomId]);
+        
+      }
+      socket.emit("room_created", finalRoomId);
+
+      if (!rooms[finalRoomId]) {
+        rooms[finalRoomId] = { players: [], turns: 0, hands: {}, myPlayedCards: {}, opponentPlayedCards: {} };
       }
 
-      // Check if the room is full
-      if (rooms[roomId].players.length >= 2) {
-        socket.emit("room_full", "Game room is full");
-        return;
-      }
-
-      // Add player to room
       const player = { id: socket.id, username };
-      rooms[roomId].players.push(player);
-      socket.join(roomId);
+      rooms[finalRoomId].players.push(player);
+      rooms[finalRoomId].hands[socket.id] = getRandomCards();
+      rooms[finalRoomId].myPlayedCards[socket.id] = [];
+      rooms[finalRoomId].opponentPlayedCards[socket.id] = [];
+      socket.join(finalRoomId);
 
-      // Notify all players in the room
-      io.to(roomId).emit("game_status", {
-        players: rooms[roomId].players.map((p) => p.username),
-        selected: rooms[roomId].selected,
-        buttonClicks: rooms[roomId].buttonClicks, // Include button clicks
+      // Emit the hand to the player who just joined
+      socket.emit("hand", rooms[finalRoomId].hands[socket.id]);
+
+      if (rooms[finalRoomId].players.length === 1) {
+        socket.emit("waiting_for_opponent", finalRoomId);
+      } else if (rooms[finalRoomId].players.length === 2) {
+        io.to(finalRoomId).emit("game_start", {
+          message: "Room is now full. Game starts!",
+          players: rooms[finalRoomId].players.map((p) => p.username),
+          turn: rooms[finalRoomId].players[0].id,
+        });
+      }
+    });
+
+    socket.on("play_card", ({ roomId, card }) => {
+      const room = rooms[roomId];
+      if (!room) return;
+
+      const currentTurn = room.players[room.turns % 2].id;
+      if (socket.id !== currentTurn) return;
+
+      room.myPlayedCards[socket.id].push(card);
+      room.hands[socket.id] = room.hands[socket.id].filter((c) => c !== card);
+      room.turns++;
+
+      io.to(roomId).emit("card_played", {
+        player: socket.id,
+        card,
+        turn: room.players[room.turns % 2].id,
       });
 
-      // Notify when the room is full
-      if (rooms[roomId].players.length === 2) {
-        io.to(roomId).emit("room_full", "Room is now full. Game starts!");
+      if (room.hands[room.players[0].id].length === 0 && room.hands[room.players[1].id].length === 0) {
+        io.to(roomId).emit("game_over", { message: "Game Over! All cards played." });
+        delete rooms[roomId];
       }
     });
 
-    // Handle button selection
-    socket.on("select_button", ({ roomId, button, username }) => {
-      console.log(`Button selected in room ${roomId} by ${username}: ${button}`);
-
-      if (rooms[roomId]) {
-        // Track who clicked which button
-        rooms[roomId].buttonClicks[button] = username;
-        
-        // Broadcast updated button clicks to the room
-        io.to(roomId).emit("button_selected", { buttonClicks: rooms[roomId].buttonClicks });
-      }
-    });
-
-    // Handle disconnects
     socket.on("disconnect", () => {
       console.log(`Disconnected: ${socket.id}`);
       for (const roomId in rooms) {
-        rooms[roomId].players = rooms[roomId].players.filter((p) => p.id !== socket.id);
-        if (rooms[roomId].players.length === 0) delete rooms[roomId];
+        const room = rooms[roomId];
+        const disconnectedPlayer = room.players.find((p) => p.id === socket.id);
+        if (disconnectedPlayer) {
+          // Notify the other player that the game has ended
+          room.players.forEach((player) => {
+            if (player.id !== socket.id) {
+              io.to(player.id).emit("game_ended", { message: "Game Ended. A player disconnected." });
+            }
+          });
+          // Clean up the room
+          delete rooms[roomId];
+        }
       }
     });
   });
