@@ -98,7 +98,7 @@ const Game = () => {
       }}
     >
       <h1 style={{ fontSize: "2.5rem", marginBottom: "20px", textShadow: "2px 2px 4px rgba(0, 0, 0, 0.5)" }}>
-        Magic The Gathering
+        MythoMagic
       </h1>
 
       {waitingForOpponent ? (
