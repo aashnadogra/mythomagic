@@ -298,6 +298,9 @@ const Game = () => {
                   src={`/cards/${opponentCardMap[card]}.png`}
                   alt={card}
                   style={{ width: "100px", margin: "10px", borderRadius: "8px" }}
+                  className="card"
+                  whileHover={{ scale: 1.1, y: -10 }}
+                  whileTap={{ scale: 0.9 }}
                   onClick={() => handleOpponentCardClick(card)}
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -324,12 +327,16 @@ const Game = () => {
                   key={card}
                   src={`/cards/${myCardMap[card]}.png`}
                   alt={card}
+                  className="card"
+                  whileHover={{ scale: 1.1, y: -10 }}
+                  whileTap={{ scale: 0.9 }}
                   onClick={() => handleMyCardClick(card)}
                   style={{ width: "100px", margin: "10px", borderRadius: "8px" }}
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5 }}
                 />
+              
               ))}
             </div>
           </div>
