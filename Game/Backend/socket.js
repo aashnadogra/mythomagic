@@ -11,7 +11,6 @@ const mapCardIds = () => {
   return cardMap;
 };
 
-
 const generateRoomCode = () => {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
@@ -35,12 +34,18 @@ const initSocket = (server) => {
         do {
           finalRoomId = generateRoomCode();
         } while (rooms[finalRoomId]);
-
       }
       socket.emit("room_created", finalRoomId);
 
       if (!rooms[finalRoomId]) {
-        rooms[finalRoomId] = { players: [], turn: Math.floor(Math.random() * 2), libraries: {}, cardMaps: {}, lifes: {}, attackers: [] };
+        rooms[finalRoomId] = { 
+          players: [], 
+          turn: Math.floor(Math.random() * 2), 
+          libraries: {}, 
+          cardMaps: {}, 
+          lifes: {}, 
+          attackers: [] 
+        };
       }
 
       const player = { id: socket.id, username };
@@ -69,6 +74,22 @@ const initSocket = (server) => {
       }
     });
 
+    // Add the new socket events for card selection syncing
+    socket.on("card_selected", ({ roomId, cardId, color, selectionType }) => {
+      // Broadcast card selection to all other players in the room
+      socket.to(roomId).emit("card_selected", { cardId, color, selectionType });
+    });
+
+    socket.on("card_deselected", ({ roomId, cardId }) => {
+      // Broadcast card deselection to all other players in the room
+      socket.to(roomId).emit("card_deselected", { cardId });
+    });
+
+    socket.on("selection_reset", ({ roomId }) => {
+      // Broadcast selection reset to all other players in the room
+      socket.to(roomId).emit("selection_reset");
+    });
+
     socket.on("play_card", ({ roomId, card }) => {
       const room = rooms[roomId];
       if (!room) return;
@@ -76,15 +97,11 @@ const initSocket = (server) => {
       const currentTurn = room.players[room.turn % 2].id;
       if (socket.id !== currentTurn) return;
 
-
-
       io.to(roomId).emit("card_played", {
         player: socket.id,
         card,
         map: room.cardMaps[socket.id][card],
       });
-
-    
     });
 
     socket.on("declare_attack", ({ roomId, attackers }) => {
@@ -156,13 +173,12 @@ const initSocket = (server) => {
                 totalDamage += Math.max(attackerAttack, 0);
                 const totalBlockerAttack = blockerResults.reduce((sum, result) => sum + result, 0);
 
-
                 // Reduce the attacker's defense by the total damage received
                 attackerDefense -= totalBlockerAttack;
 
                 // Emit event if the attacker dies
                 if (attackerDefense <= 0) {
-                  io.to(roomId).emit("discard", { player: opponentId,card: attacker });
+                  io.to(roomId).emit("discard", { player: opponentId, card: attacker });
                 }
               });
             })
@@ -171,8 +187,6 @@ const initSocket = (server) => {
 
       // Wait for all attacker-blocker interactions to complete
       Promise.all(promises).then(() => {
-        
-
         // Reduce the opponent's life by the total damage dealt
         room.lifes[socket.id] -= totalDamage;
 
@@ -194,17 +208,16 @@ const initSocket = (server) => {
       const currentTurn = room.players[room.turn % 2].id;
       if (socket.id !== currentTurn) return;
 
-
-       // Increment the turn counter and emit event to change the turn
-       room.turn++;
-       io.to(roomId).emit("turn_change", { turn: room.players[room.turn % 2].id });
+      // Increment the turn counter and emit event to change the turn
+      room.turn++;
+      io.to(roomId).emit("turn_change", { turn: room.players[room.turn % 2].id });
       if (room.libraries[room.players[room.turn % 2].id].length === 0) {
-       const winner = room.players.find((p) => p.id !== room.players[room.turn % 2].id).username;
-       io.to(roomId).emit("game_over", { message: `Game Over! Library is empty. ${winner} wins!` });
-       delete rooms[roomId];
-       return;
-     }
-       io.to(room.players[room.turn % 2].id).emit("draw", room.libraries[room.players[room.turn % 2].id].pop());
+        const winner = room.players.find((p) => p.id !== room.players[room.turn % 2].id).username;
+        io.to(roomId).emit("game_over", { message: `Game Over! Library is empty. ${winner} wins!` });
+        delete rooms[roomId];
+        return;
+      }
+      io.to(room.players[room.turn % 2].id).emit("draw", room.libraries[room.players[room.turn % 2].id].pop());
     });
 
     socket.on("disconnect", () => {

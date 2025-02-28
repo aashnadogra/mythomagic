@@ -4,7 +4,7 @@ body {
 }
 
 body {
-   background: #aaa url("/Users/nikitakiran/Desktop/College/Sem6/mythomagic/Game/Frontend/public/bg.png") center no-repeat;
+   background: #aaa url("D:\WE\webD\mythomagic\Game\Frontend\public\bg.png") center no-repeat;
    background-size: cover;
    
 }

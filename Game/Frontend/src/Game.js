@@ -32,6 +32,8 @@ const Game = () => {
   const [roomId, setRoomId] = useState("");
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
   const [gameCode, setGameCode] = useState("");
+  const [cardColors, setCardColors] = useState({}); // Stores { cardId: "color" }
+  const [opponentSelectedCards, setOpponentSelectedCards] = useState({}); // State for opponent selected cards
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -44,21 +46,16 @@ const Game = () => {
         socket.emit("join_room", storedRoomId, storedUsername, true);
       }
       setUsername(storedUsername);
-
     }
-    
-  } , []);
+  }, []);
 
   useEffect(() => {
-
-
     socket.on("room_created", (roomId) => {
       setRoomId(roomId);
     });
 
     socket.on("game_start", ({ players, turn }) => {
       setPlayers(players);
-
       setTurn(turn);
       if (turn === socket.id) {
         setButtonText("Declare Attackers");
@@ -88,6 +85,9 @@ const Game = () => {
       setAttackerToBlock(null);
       setAttackerToBlockersMap({});
       setSelectedAttackers([]);
+      // Clear all visual selections when turn changes
+      setCardColors({});
+      setOpponentSelectedCards({});
       if (turn === socket.id) {
         setButtonText("Declare Attackers");
       } else {
@@ -133,10 +133,6 @@ const Game = () => {
       setMyLibrary(myLibrary.filter((c) => c !== card));
     });
 
-    // socket.on("hand", (cards) => {
-    //   setHand(cards);
-    // });
-
     socket.on("waiting_for_opponent", (code) => {
       setWaitingForOpponent(true);
       setGameCode(code);
@@ -156,6 +152,25 @@ const Game = () => {
       }
     });
 
+    // Handling opponent's card selections
+    socket.on("card_selected", ({ cardId, color, selectionType }) => {
+      setOpponentSelectedCards(prev => ({
+        ...prev,
+        [cardId]: { color, selectionType }
+      }));
+    });
+
+    socket.on("card_deselected", ({ cardId }) => {
+      setOpponentSelectedCards(prev => {
+        const newSelectedCards = { ...prev };
+        delete newSelectedCards[cardId];
+        return newSelectedCards;
+      });
+    });
+
+    socket.on("selection_reset", () => {
+      setOpponentSelectedCards({});
+    });
 
     return () => {
       socket.off("room_created");
@@ -171,8 +186,11 @@ const Game = () => {
       socket.off("library");
       socket.off("discard");
       socket.off("draw");
+      socket.off("card_selected");
+      socket.off("card_deselected");
+      socket.off("selection_reset");
     };
-  }, [navigate, turn, myLibrary, lastPhase, myPlayedCards, hand, myLife, selectedAttackers, selectedAttackers, myCardMap, attackDeclared, buttonText,attackersDeclared, selectingBlockers, attackerToBlock, attackerToBlockersMap, myDiscardCards, opponentDiscardCards, opponentLife, opponentPlayedCards, opponentCardMap]);
+  }, [navigate, turn, myLibrary]);
 
   const playCard = (card) => {
     if (turn !== socket.id) return;
@@ -191,6 +209,8 @@ const Game = () => {
       setAttackDeclared(true);
       setAttackersDeclared(selectedAttackers);
       socket.emit("declare_attack", { roomId, attackers: selectedAttackers });
+      // Don't reset selections here - keep them visible to opponent
+      // We'll only reset when turn changes
     } else if (buttonText === "Declare Blockers") {
       setSelectingBlockers(true);
       setButtonText("Confirm Block");
@@ -198,22 +218,59 @@ const Game = () => {
       setSelectingBlockers(false);
       setButtonText("");
       socket.emit("declare_block", { roomId, attackerToBlockersMap });
+      // Don't reset selections here either
     } else if (buttonText === "End Turn") {
       setButtonText("");
+      // Reset all selections when ending turn
+      setCardColors({});
+      socket.emit("selection_reset", { roomId });
       socket.emit("end_turn", roomId);
     }
+  };
+
+  // Utility function to generate random color
+  const getRandomColor = () => {
+    const letters = "0123456789ABCDEF";
+    let color = "#";
+    for (let i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
   };
 
   const handleMyCardClick = (card) => {
     if (selectingAttackers) {
       if (selectedAttackers.includes(card)) {
         setSelectedAttackers(selectedAttackers.filter((c) => c !== card));
+        setCardColors((prevColors) => {
+          const newColors = { ...prevColors };
+          delete newColors[card]; // Remove color when deselecting
+          return newColors;
+        });
+        // Emit card deselection to opponent
+        socket.emit("card_deselected", { roomId, cardId: card });
       } else {
+        const randomColor = getRandomColor();
         setSelectedAttackers([...selectedAttackers, card]);
+        setCardColors((prevColors) => ({
+          ...prevColors,
+          [card]: randomColor, // Assign color to selected card
+        }));
+        // Emit card selection to opponent with color and type
+        socket.emit("card_selected", { 
+          roomId, 
+          cardId: card, 
+          color: randomColor,
+          selectionType: "attacker" 
+        });
       }
     }
+
     if (selectingBlockers) {
-      const isAlreadyBlocker = Object.values(attackerToBlockersMap).some(blockers => blockers.includes(card));
+      const isAlreadyBlocker = Object.values(attackerToBlockersMap).some((blockers) =>
+        blockers.includes(card)
+      );
+
       if (isAlreadyBlocker) {
         setAttackerToBlockersMap((prevMap) => {
           const newMap = { ...prevMap };
@@ -222,16 +279,30 @@ const Game = () => {
           }
           return newMap;
         });
-      }
-
-      if (attackerToBlock) {
+        setCardColors((prevColors) => {
+          const newColors = { ...prevColors };
+          delete newColors[card]; // Remove color when deselecting
+          return newColors;
+        });
+        // Emit card deselection to opponent
+        socket.emit("card_deselected", { roomId, cardId: card });
+      } else if (attackerToBlock) {
+        const attackerColor = cardColors[attackerToBlock] || getRandomColor();
         setAttackerToBlockersMap((prevMap) => ({
           ...prevMap,
-          [attackerToBlock]: [
-            ...(prevMap[attackerToBlock] || []),
-            card
-          ]
+          [attackerToBlock]: [...(prevMap[attackerToBlock] || []), card],
         }));
+        setCardColors((prevColors) => ({
+          ...prevColors,
+          [card]: attackerColor, // Assign same color as attacker
+        }));
+        // Emit card selection to opponent with color and type
+        socket.emit("card_selected", { 
+          roomId, 
+          cardId: card, 
+          color: attackerColor,
+          selectionType: "blocker" 
+        });
       }
     }
   };
@@ -240,10 +311,21 @@ const Game = () => {
     if (selectingBlockers) {
       if (attackersDeclared.includes(card)) {
         setAttackerToBlock(card);
+        const randomColor = cardColors[card] || getRandomColor();
+        setCardColors((prevColors) => ({
+          ...prevColors,
+          [card]: randomColor, // Assign color to opponent's card
+        }));
+        // Emit card selection to opponent with color and type
+        socket.emit("card_selected", { 
+          roomId, 
+          cardId: card, 
+          color: randomColor,
+          selectionType: "blocking-target" 
+        });
       }
     }
-  }
-
+  };
 
   return (
     <div
@@ -292,21 +374,38 @@ const Game = () => {
           >
             <h3>Opponent's Cards</h3>
             <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
-              {opponentPlayedCards.map((card) => (
-                <motion.img
-                  key={card}
-                  src={`/cards/${opponentCardMap[card]}.png`}
-                  alt={card}
-                  style={{ width: "100px", margin: "10px", borderRadius: "8px" }}
-                  className="card"
-                  whileHover={{ scale: 1.1, y: -10 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => handleOpponentCardClick(card)}
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                />
-              ))}
+              {opponentPlayedCards.map((card) => {
+                // Check if this card is selected by the opponent and highlight accordingly
+                const isOpponentSelecting = opponentSelectedCards[card];
+                const borderStyle = isOpponentSelecting ? 
+                  `3px solid ${isOpponentSelecting.color}` : 
+                  (attackersDeclared.includes(card) ? "3px solid #ff0000" : "none");
+                
+                const boxShadowStyle = isOpponentSelecting || attackersDeclared.includes(card) ?
+                  "0 0 10px rgba(255,255,255,0.8)" : "none";
+                
+                return (
+                  <motion.img
+                    key={card}
+                    src={`/cards/${opponentCardMap[card]}.png`}
+                    alt={card}
+                    style={{
+                      width: "100px", 
+                      margin: "10px", 
+                      borderRadius: "8px",
+                      border: borderStyle,
+                      boxShadow: boxShadowStyle
+                    }}
+                    className="card"
+                    whileHover={{ scale: 1.1, y: -10 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => handleOpponentCardClick(card)}
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -322,22 +421,38 @@ const Game = () => {
           >
             <h3>Your Cards</h3>
             <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
-              {myPlayedCards.map((card) => (
-                <motion.img
-                  key={card}
-                  src={`/cards/${myCardMap[card]}.png`}
-                  alt={card}
-                  className="card"
-                  whileHover={{ scale: 1.1, y: -10 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => handleMyCardClick(card)}
-                  style={{ width: "100px", margin: "10px", borderRadius: "8px" }}
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                />
-              
-              ))}
+              {myPlayedCards.map((card) => {
+                const isAttacker = selectedAttackers.includes(card);
+                const isBlocker = Object.values(attackerToBlockersMap).some(blockers => blockers.includes(card));
+                const isSelected = isAttacker || isBlocker;
+                const cardColor = cardColors[card] || "#ff0000";
+                // Check if this card is also being visually selected by opponent
+                const isOpponentSelecting = opponentSelectedCards[card];
+                const finalBorderColor = isOpponentSelecting ? isOpponentSelecting.color : (isSelected ? cardColor : "none");
+                const finalBoxShadow = (isSelected || isOpponentSelecting) ? "0 0 10px rgba(255,255,255,0.8)" : "none";
+
+                return (
+                  <motion.img
+                    key={card}
+                    src={`/cards/${myCardMap[card]}.png`}
+                    alt={card}
+                    className="card"
+                    whileHover={{ scale: 1.1, y: -10 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => handleMyCardClick(card)}
+                    style={{
+                      width: "100px",
+                      margin: "10px",
+                      borderRadius: "8px",
+                      border: finalBorderColor !== "none" ? `3px solid ${finalBorderColor}` : "none",
+                      boxShadow: finalBoxShadow,
+                    }}
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -385,11 +500,11 @@ const Game = () => {
                 borderRadius: "4px",
                 cursor: "pointer",
                 margin: "5px",
+                display: buttonText ? "inline-block" : "none" // Hide when no text
               }}
             >
               {buttonText}
             </button>
-
           </div>
         </>
       )}
