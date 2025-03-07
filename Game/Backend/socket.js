@@ -34,10 +34,6 @@ const initSocket = (server) => {
         do {
           finalRoomId = generateRoomCode();
         } while (rooms[finalRoomId]);
-      }
-      socket.emit("room_created", finalRoomId);
-
-      if (!rooms[finalRoomId]) {
         rooms[finalRoomId] = { 
           players: [], 
           turn: Math.floor(Math.random() * 2), 
@@ -47,7 +43,14 @@ const initSocket = (server) => {
           attackers: [] 
         };
       }
+ 
 
+      if (!rooms[finalRoomId]) {
+        socket.emit("room_not_found");
+        return
+      }
+
+      socket.emit("room_created", finalRoomId);
       const player = { id: socket.id, username };
       rooms[finalRoomId].players.push(player);
       socket.join(finalRoomId);
@@ -75,20 +78,16 @@ const initSocket = (server) => {
     });
 
     // Add the new socket events for card selection syncing
-    socket.on("card_selected", ({ roomId, cardId, color, selectionType }) => {
+    socket.on("card_selected", ({ roomId, cardId, color}) => {
       // Broadcast card selection to all other players in the room
-      socket.to(roomId).emit("card_selected", { cardId, color, selectionType });
+      io.to(roomId).emit("card_selected", { cardId, color});
     });
 
     socket.on("card_deselected", ({ roomId, cardId }) => {
       // Broadcast card deselection to all other players in the room
-      socket.to(roomId).emit("card_deselected", { cardId });
+      io.to(roomId).emit("card_deselected", { cardId });
     });
 
-    socket.on("selection_reset", ({ roomId }) => {
-      // Broadcast selection reset to all other players in the room
-      socket.to(roomId).emit("selection_reset");
-    });
 
     socket.on("play_card", ({ roomId, card }) => {
       const room = rooms[roomId];
