@@ -2,11 +2,26 @@ const socketIo = require("socket.io");
 const pool = require('./db');
 
 const rooms = {}; // Store game rooms and player states
-
-const mapCardIds = () => {
+const deck1 = [6, 5, 4, 5, 2, 2, 4, 11, 6, 9, 7, 8, 9, 11, 7, 8, 14, 18, 14, 18 ]
+const deck2 = [1, 1, 1, 1, 3, 3, 3, 3, 8, 8, 10, 10, 12, 12, 13, 15, 16, 15, 16, 13];
+const mapCardIds = (i) => {
   const cardMap = {};
-  for (let i = 1; i <= 30; i++) {
-    cardMap[i] = Math.floor(Math.random() * 11) + 8;
+  let deck = []
+  //shuffle deck1
+  if (i % 2 == 0){
+    deck = deck1.slice();
+  }
+  else{
+    deck = deck2.slice();
+  }
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * i);
+    const temp = deck1[i];
+    deck[i] = deck[j];
+    deck[j] = temp;
+  }
+  for (let i = 1; i <= 20; i++) {
+    cardMap[i] = deck[i-1];
   }
   return cardMap;
 };
@@ -40,7 +55,11 @@ const initSocket = (server) => {
           libraries: {}, 
           cardMaps: {}, 
           lifes: {}, 
-          attackers: [] 
+          attackers: [],
+          total_resorces: {},
+          available_resorces: {},
+          rishis:{},
+          untapped_rishis:{}
         };
       }
  
@@ -56,11 +75,16 @@ const initSocket = (server) => {
       socket.join(finalRoomId);
 
       // Emit library to the player who just joined
-      let cardMap = mapCardIds();
+      let cardMap = mapCardIds(rooms[finalRoomId].players.length % 2);
       let library = Object.keys(cardMap);
       rooms[finalRoomId].libraries[socket.id] = library;
       rooms[finalRoomId].cardMaps[socket.id] = cardMap;
       rooms[finalRoomId].lifes[socket.id] = 20;
+      rooms[finalRoomId].total_resorces[socket.id] = {'G':0, 'W':0, 'F':0, 'B':0};
+      rooms[finalRoomId].available_resorces[socket.id] = {'G':0, 'W':0, 'F':0, 'B':0};
+      rooms[finalRoomId].rishis[socket.id] = {'G': [], 'W': [], 'F': [], 'B': []};
+      rooms[finalRoomId].untapped_rishis[socket.id] = {'G': [], 'W': [], 'F': [], 'B': []};
+      
       socket.emit("library", { library, cardMap });
       for (let i = 0; i < 5; i++) {
         let card = rooms[finalRoomId].libraries[socket.id].pop();
@@ -96,15 +120,91 @@ const initSocket = (server) => {
       const currentTurn = room.players[room.turn % 2].id;
       if (socket.id !== currentTurn) return;
 
-      io.to(roomId).emit("card_played", {
-        player: socket.id,
-        card,
-        map: room.cardMaps[socket.id][card],
-      });
+      pool.query('SELECT type, attack, defense, firecost, goldcost, woodcost, bloodcost, extracost, rtype FROM cards WHERE card_id = $1', [room.cardMaps[socket.id][card]])
+        .then(res => {
+          const cardStats = res.rows[0];
+          if (cardStats.type === 'R'){
+            room.total_resorces[socket.id][cardStats.rtype] += 1;
+            room.available_resorces[socket.id][cardStats.rtype] += 1;
+            room.rishis[socket.id][cardStats.rtype].push(card);
+            room.untapped_rishis[socket.id][cardStats.rtype].push(card);
+            io.to(roomId).emit("rishi", {
+              player: socket.id,
+              card,
+              map: room.cardMaps[socket.id][card],
+            });
+          }
+          else{
+            if (room.available_resorces[socket.id]['F'] >= cardStats.firecost && room.available_resorces[socket.id]['G'] >= cardStats.goldcost && room.available_resorces[socket.id]['W'] >= cardStats.woodcost && room.available_resorces[socket.id]['B'] >= cardStats.bloodcost && (room.available_resorces[socket.id]['F'] + room.available_resorces[socket.id]['B'] + room.available_resorces[socket.id]['G'] + room.available_resorces[socket.id]['W']) - (cardStats.firecost + cardStats.goldcost + cardStats.woodcost + cardStats.bloodcost) >= cardStats.extracost){
+              let fc = cardStats.firecost;
+              let gc = cardStats.goldcost;
+              let wc = cardStats.woodcost;
+              let bc = cardStats.bloodcost;
+              let ec = cardStats.extracost;
+              while (fc >  0){
+                room.available_resorces[socket.id]['F'] -= 1;
+                fc -= 1;
+                let card = room.untapped_rishis[socket.id]['F'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while(ec > 0 && room.available_resorces[socket.id]['F'] > 0){
+                room.available_resorces[socket.id]['F'] -= 1;
+                ec -= 1;
+                let card = room.untapped_rishis[socket.id]['F'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while (gc >  0){
+                room.available_resorces[socket.id]['G'] -= 1;
+                gc -= 1;
+                let card = room.untapped_rishis[socket.id]['G'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while(ec > 0 && room.available_resorces[socket.id]['G'] > 0){
+                room.available_resorces[socket.id]['G'] -= 1;
+                ec -= 1;
+                let card = room.untapped_rishis[socket.id]['G'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while (wc >  0){
+                room.available_resorces[socket.id]['W'] -= 1;
+                wc -= 1;
+                let card = room.untapped_rishis[socket.id]['W'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while(ec > 0 && room.available_resorces[socket.id]['W'] > 0){
+                room.available_resorces[socket.id]['W'] -= 1;
+                ec -= 1;
+                let card = room.untapped_rishis[socket.id]['W'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while (bc >  0){
+                room.available_resorces[socket.id]['B'] -= 1;
+                bc -= 1;
+                let card = room.untapped_rishis[socket.id]['B'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              while(ec > 0 && room.available_resorces[socket.id]['B'] > 0){
+                room.available_resorces[socket.id]['B'] -= 1;
+                ec -= 1;
+                let card = room.untapped_rishis[socket.id]['B'].pop();
+                io.to(roomId).emit("tap", { player: socket.id, card: card });
+              }
+              io.to(roomId).emit("card_played", {
+                player: socket.id,
+                card,
+                map: room.cardMaps[socket.id][card],
+              });
+            }
+            else{
+              socket.emit("not_enough_resorces", {card: card, msg: "Not enough resorces to play card."});
+            }
+          }
+        });
+
+      
     });
 
     socket.on("declare_attack", ({ roomId, attackers }) => {
-      console.log(attackers);
       const room = rooms[roomId];
       if (!room) return;
 
@@ -116,7 +216,6 @@ const initSocket = (server) => {
     });
 
     socket.on("declare_block", ({ roomId, attackerToBlockersMap }) => {
-      console.log(attackerToBlockersMap);
       const room = rooms[roomId];
       if (!room) return;
 
@@ -146,7 +245,6 @@ const initSocket = (server) => {
               const attackerStats = res.rows[0];
               let attackerDefense = attackerStats.defense;
               let attackerAttack = attackerStats.attack;
-              console.log(attackerStats);
 
               // Array to store promises for each blocker's damage calculation
               const blockerPromises = blockers.map(blocker => {
@@ -159,7 +257,6 @@ const initSocket = (server) => {
                       io.to(roomId).emit("discard", { player: socket.id, card: blocker });
                     }
                     attackerAttack -= blockerStats.defense;
-                    console.log(attackerAttack);
 
                     return blockerStats.attack;
                   });
@@ -167,7 +264,6 @@ const initSocket = (server) => {
 
               // Wait for all blocker promises to resolve
               return Promise.all(blockerPromises).then(blockerResults => {
-                console.log(blockerResults);
         
                 totalDamage += Math.max(attackerAttack, 0);
                 const totalBlockerAttack = blockerResults.reduce((sum, result) => sum + result, 0);
@@ -209,6 +305,10 @@ const initSocket = (server) => {
 
       // Increment the turn counter and emit event to change the turn
       room.turn++;
+      let curr = room.players.find(p => p.id !== socket.id).id;
+      io.to(roomId).emit("untap", { player: curr });
+      room.available_resorces[curr] = {'G':room.total_resorces[curr]['G'], 'W':room.total_resorces[curr]['W'], 'F':room.total_resorces[curr]['F'], 'B':room.total_resorces[curr]['B']};
+      room.untapped_rishis[curr] = {'G':room.rishis[curr]['G'].slice(), 'W':room.rishis[curr]['W'].slice(), 'F':room.rishis[curr]['F'].slice(), 'B':room.rishis[curr]['B'].slice()};
       io.to(roomId).emit("turn_change", { turn: room.players[room.turn % 2].id });
       if (room.libraries[room.players[room.turn % 2].id].length === 0) {
         const winner = room.players.find((p) => p.id !== room.players[room.turn % 2].id).username;

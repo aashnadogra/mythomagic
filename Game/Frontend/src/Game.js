@@ -34,7 +34,10 @@ const Game = () => {
   const [gameCode, setGameCode] = useState("");
   const [myCardColors, setMyCardColors] = useState({}); // Stores { cardId: "color" }
   const [opponentCardColors, setOpponentCardColors] = useState({}); // Stores { cardId: "color" }
-
+  const [rishis, setRishis] = useState([]);
+  const [opponentRishis, setOpponentRishis] = useState([]);
+  const [myTappedRishis, setMyTappedRishis] = useState([]);
+  const [opponentTappedRishis, setOpponentTappedRishis] = useState([]);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -66,6 +69,7 @@ const Game = () => {
 
     socket.on("card_played", ({ player, card, map }) => {
       if (player === socket.id) {
+        setHand(hand.filter((c) => c !== card));
         setMyPlayedCards((prev) => [...prev, card]);
       } else {
         setOpponentCardMap((prev) => {
@@ -75,6 +79,43 @@ const Game = () => {
         setOpponentPlayedCards((prev) => [...prev, card]);
       }
     });
+
+
+    socket.on("rishi", ({ player, card, map }) => {
+      if (player === socket.id) {
+        setRishis((prev) => [...prev, card]);
+        setHand(hand.filter((c) => c !== card));
+      } else {
+        setOpponentCardMap((prev) => {
+          const newMap = { ...prev, [card]: map };
+          return newMap;
+        });
+        setOpponentRishis((prev) => [...prev, card]);
+      }
+    });
+
+    socket.on("tap", ({ player, card }) => {
+      if (player === socket.id) {
+        setMyTappedRishis((prev) => [...prev, card]);
+      }
+      else {
+        setOpponentTappedRishis((prev) => [...prev, card]);
+      }
+    });
+
+    socket.on("untap", ({ player }) => {
+      if (player === socket.id) {
+        setMyTappedRishis([]);
+      }
+      else {
+        setOpponentTappedRishis([]);
+      }
+    });
+
+    socket.on("not_enough_resorces", ({ card, msg }) => {
+      alert(msg);
+    }
+    );
 
     socket.on("turn_change", ({ turn }) => {
       setTurn(turn);
@@ -185,14 +226,15 @@ const Game = () => {
         });
       }
       else {
-      setOpponentCardColors((prevColors) => {
-        const newColors = { ...prevColors };
-        delete newColors[cardId]; // Remove color when deselecting
-        return newColors;
+        setOpponentCardColors((prevColors) => {
+          const newColors = { ...prevColors };
+          delete newColors[cardId]; // Remove color when deselecting
+          return newColors;
+        }
+        );
       }
-      );
-    }
     });
+
 
     return () => {
       socket.off("room_created");
@@ -211,14 +253,19 @@ const Game = () => {
       socket.off("card_selected");
       socket.off("card_deselected");
       socket.off("room_not_found");
+      socket.off("rishi");
+      socket.off("tap");
+      socket.off("untap");
+      socket.off("not_enough_resorces");
+
     };
-  }, [navigate, turn, myLibrary, lastPhase, myPlayedCards, hand, myLife, selectedAttackers, selectedAttackers, myCardMap, attackDeclared, buttonText,attackersDeclared, selectingBlockers, attackerToBlock, attackerToBlockersMap, myDiscardCards, opponentDiscardCards, opponentLife, opponentPlayedCards, opponentCardMap, myCardColors, opponentCardColors]);
+  }, [navigate, turn, myLibrary, lastPhase, myPlayedCards, hand, myLife, selectedAttackers, selectedAttackers, myCardMap, attackDeclared, buttonText, attackersDeclared, selectingBlockers, attackerToBlock, attackerToBlockersMap, myDiscardCards, opponentDiscardCards, opponentLife, opponentPlayedCards, opponentCardMap, myCardColors, opponentCardColors, rishis, opponentRishis, myTappedRishis, opponentTappedRishis]);
 
   const playCard = (card) => {
     if (turn !== socket.id) return;
     if (selectingAttackers) return;
     socket.emit("play_card", { roomId, card });
-    setHand(hand.filter((c) => c !== card));
+    
   };
 
   const handleButtonPress = () => {
@@ -267,9 +314,9 @@ const Game = () => {
       } else {
         let randomColor = getRandomColor();
         setSelectedAttackers([...selectedAttackers, card]);
-        socket.emit("card_selected", { 
-          roomId, 
-          cardId: card, 
+        socket.emit("card_selected", {
+          roomId,
+          cardId: card,
           color: randomColor,
         });
       }
@@ -296,9 +343,9 @@ const Game = () => {
           [attackerToBlock]: [...(prevMap[attackerToBlock] || []), card],
         }));
         // Emit card selection to opponent with color and type
-        socket.emit("card_selected", { 
-          roomId, 
-          cardId: card, 
+        socket.emit("card_selected", {
+          roomId,
+          cardId: card,
           color: attackerColor,
         });
       }
@@ -309,8 +356,8 @@ const Game = () => {
     if (selectingBlockers) {
       if (attackersDeclared.includes(card)) {
 
-          setAttackerToBlock(card);
-        
+        setAttackerToBlock(card);
+
       }
     }
   };
@@ -353,6 +400,9 @@ const Game = () => {
           {/* Opponent's Play Area */}
           <div
             style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "20px",
               marginBottom: "20px",
               padding: "20px",
               background: "rgba(255, 255, 255, 0.1)",
@@ -360,44 +410,66 @@ const Game = () => {
               boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
             }}
           >
-            <h3>Opponent's Cards</h3>
-            <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
-              {opponentPlayedCards.map((card) => {
-                
-                const borderStyle = opponentCardColors[card] ? 
-                  `6px solid ${opponentCardColors[card]}` : "none";
-                
-                const boxShadowStyle = card === attackerToBlock? "0 0 25px rgba(240, 26, 26, 0.8)" :(opponentCardColors[card] ?
-                  "0 0 10px rgba(255,255,255,0.8)" : "none");
-                
-                return (
+            {/* Opponent's Played Cards */}
+            <div style={{ flex: 1 }}>
+              <h3>Opponent's Cards</h3>
+              <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
+                {opponentPlayedCards.map((card) => {
+                  const borderStyle = opponentCardColors[card] ? `6px solid ${opponentCardColors[card]}` : "none";
+                  const boxShadowStyle = card === attackerToBlock ? "0 0 25px rgba(240, 26, 26, 0.8)" : (opponentCardColors[card] ? "0 0 10px rgba(255,255,255,0.8)" : "none");
+
+                  return (
+                    <motion.img
+                      key={card}
+                      src={`/cards/${opponentCardMap[card]}.png`}
+                      alt={card}
+                      style={{
+                        width: "100px",
+                        margin: "10px",
+                        borderRadius: "8px",
+                        border: borderStyle,
+                        boxShadow: boxShadowStyle
+                      }}
+                      whileHover={{ scale: 1.1, y: -10 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleOpponentCardClick(card)}
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Opponent's Rishis */}
+            <div style={{ flex: 1 }}>
+              <h3>Opponent's Rishis</h3>
+              <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
+                {opponentRishis.map((card) => (
                   <motion.img
                     key={card}
                     src={`/cards/${opponentCardMap[card]}.png`}
                     alt={card}
                     style={{
-                      width: "100px", 
-                      margin: "10px", 
+                      width: "100px",
+                      margin: "10px",
                       borderRadius: "8px",
-                      border: borderStyle,
-                      boxShadow: boxShadowStyle
+                      filter: opponentTappedRishis.includes(card) ? "grayscale(100%)" : "none",
+                      transform: opponentTappedRishis.includes(card) ? "rotate(90deg)" : "none",
                     }}
-                    className="card"
-                    whileHover={{ scale: 1.1, y: -10 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => handleOpponentCardClick(card)}
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
                   />
-                );
-              })}
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Player's Play Area */}
           <div
             style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "20px",
               marginBottom: "20px",
               padding: "20px",
               background: "rgba(255, 255, 255, 0.1)",
@@ -405,38 +477,56 @@ const Game = () => {
               boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
             }}
           >
-            <h3>Your Cards</h3>
-            <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
-              {myPlayedCards.map((card) => {
-                const borderStyle = myCardColors[card] ? 
-                `6px solid ${myCardColors[card]}` : "none";
-              
-              const boxShadowStyle = myCardColors[card] ?
-                "0 0 10px rgba(255,255,255,0.8)" : "none";
-              
+            <div style={{ flex: 1 }}>
+              <h3>Your Cards</h3>
+              <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
+                {myPlayedCards.map((card) => {
+                  const borderStyle = myCardColors[card] ? `6px solid ${myCardColors[card]}` : "none";
+                  const boxShadowStyle = myCardColors[card] ? "0 0 10px rgba(255,255,255,0.8)" : "none";
 
-                return (
+                  return (
+                    <motion.img
+                      key={card}
+                      src={`/cards/${myCardMap[card]}.png`}
+                      alt={card}
+                      style={{
+                        width: "100px",
+                        margin: "10px",
+                        borderRadius: "8px",
+                        border: borderStyle,
+                        boxShadow: boxShadowStyle,
+                      }}
+                      whileHover={{ scale: 1.1, y: -10 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleMyCardClick(card)}
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Player's Rishis */}
+            <div style={{ flex: 1 }}>
+              <h3>Your Rishis</h3>
+              <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
+                {rishis.map((card) => (
                   <motion.img
                     key={card}
                     src={`/cards/${myCardMap[card]}.png`}
                     alt={card}
-                    className="card"
-                    whileHover={{ scale: 1.1, y: -10 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => handleMyCardClick(card)}
                     style={{
                       width: "100px",
                       margin: "10px",
                       borderRadius: "8px",
-                      border: borderStyle,
-                      boxShadow: boxShadowStyle,
+                      filter: myTappedRishis.includes(card) ? "grayscale(100%)" : "none",
+                      transform: myTappedRishis.includes(card) ? "rotate(90deg)" : "none",
                     }}
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
                   />
-                );
-              })}
+                ))}
+              </div>
             </div>
           </div>
 
@@ -456,7 +546,6 @@ const Game = () => {
                   key={card}
                   src={`/cards/${myCardMap[card]}.png`}
                   alt={card}
-                  className="card"
                   whileHover={{ scale: 1.1, y: -10 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => playCard(card)}
@@ -471,6 +560,7 @@ const Game = () => {
               ))}
             </div>
           </div>
+
           {/* Attack and Defend Button */}
           <div style={{ marginTop: "20px" }}>
             <button
