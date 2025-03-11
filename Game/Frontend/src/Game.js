@@ -185,7 +185,11 @@ const Game = () => {
     socket.on("attack_declared", ({ attackers }) => {
       setAttackersDeclared(attackers);
       if (socket.id !== turn) {
+        if (myPlayedCards.length > 0) {
         setButtonText("Declare Blockers");
+        } else{
+          socket.emit("declare_block", { roomId, attackerToBlockersMap });
+        }
       }
     });
 
@@ -263,7 +267,6 @@ const Game = () => {
 
   const playCard = (card) => {
     if (turn !== socket.id) return;
-    if (selectingAttackers) return;
     socket.emit("play_card", { roomId, card });
     
   };
