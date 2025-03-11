@@ -2,26 +2,25 @@ const socketIo = require("socket.io");
 const pool = require('./db');
 
 const rooms = {}; // Store game rooms and player states
-const deck1 = [6, 5, 4, 5, 2, 2, 4, 11, 6, 9, 7, 8, 9, 11, 7, 8, 14, 18, 14, 18 ]
-const deck2 = [1, 1, 1, 1, 3, 3, 3, 3, 8, 8, 10, 10, 12, 12, 13, 15, 16, 15, 16, 13];
+const deck1 = [6, 5, 4, 5, 2, 2, 4, 5, 6, 9, 7, 8, 9, 11, 7, 8, 14, 4, 14, 18];
+const deck2 = [1, 1, 1, 1, 3, 3, 3, 3, 3, 8, 10, 8, 12, 12, 13, 8, 16, 15, 16, 13];
 const mapCardIds = (i) => {
   const cardMap = {};
   let deck = []
-  //shuffle deck1
   if (i % 2 == 0){
     deck = deck1.slice();
   }
   else{
     deck = deck2.slice();
   }
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * i);
-    const temp = deck1[i];
-    deck[i] = deck[j];
+  for (let k = deck.length - 1; k > 0; k--) {
+    const j = Math.floor(Math.random() * (deck.length - 1));
+    const temp = deck[k];
+    deck[k] = deck[j];
     deck[j] = temp;
   }
-  for (let i = 1; i <= 20; i++) {
-    cardMap[i] = deck[i-1];
+  for (let k = 1; k <= 20; k++) {
+    cardMap[k] = deck[k-1];
   }
   return cardMap;
 };
@@ -76,6 +75,7 @@ const initSocket = (server) => {
 
       // Emit library to the player who just joined
       let cardMap = mapCardIds(rooms[finalRoomId].players.length % 2);
+      console.log(cardMap);
       let library = Object.keys(cardMap);
       rooms[finalRoomId].libraries[socket.id] = library;
       rooms[finalRoomId].cardMaps[socket.id] = cardMap;
@@ -90,7 +90,6 @@ const initSocket = (server) => {
         let card = rooms[finalRoomId].libraries[socket.id].pop();
         socket.emit("draw", card);
       }
-
       if (rooms[finalRoomId].players.length === 1) {
         socket.emit("waiting_for_opponent", finalRoomId);
       } else if (rooms[finalRoomId].players.length === 2) {
@@ -119,7 +118,7 @@ const initSocket = (server) => {
 
       const currentTurn = room.players[room.turn % 2].id;
       if (socket.id !== currentTurn) return;
-
+      console.log(card, room.cardMaps[socket.id][card]);
       pool.query('SELECT type, attack, defense, firecost, goldcost, woodcost, bloodcost, extracost, rtype FROM cards WHERE card_id = $1', [room.cardMaps[socket.id][card]])
         .then(res => {
           const cardStats = res.rows[0];
@@ -210,8 +209,11 @@ const initSocket = (server) => {
 
       const currentTurn = room.players[room.turn % 2].id;
       if (socket.id !== currentTurn) return;
-
+      if (attackers.length === 0) {
+        io.to(roomId).emit("last_phase");
+      }
       io.to(roomId).emit("attack_declared", { attackers });
+      
       room.attackers = attackers;
     });
 
